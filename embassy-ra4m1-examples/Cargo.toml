@@ -1,0 +1,14 @@
+[package]
+name = "embassy-ra4m1-examples"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embassy-ra4m1 = { path = "../embassy-ra4m1", features = ["defmt"] }
+embassy-executor = { version = "0.10.0", features = ["platform-cortex-m", "executor-thread", "defmt"] }
+cortex-m-rt = "0.7.5"
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+
+defmt = "1.0.1"
+defmt-rtt = "1.1.0"
+panic-probe = "1.0.0"

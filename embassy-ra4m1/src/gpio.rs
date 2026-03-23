@@ -1,7 +1,7 @@
 use crate::pac;
 use crate::peripherals;
-use crate::peripherals::{P100, P110};
 use core::convert::Infallible;
+use defmt::debug;
 use embassy_hal_internal::{Peri, PeripheralType, impl_peripheral};
 
 /// Pull-up configuration for input pins.
@@ -72,18 +72,18 @@ fn with_pfs_unlocked(f: impl FnOnce()) {
         let pmisc = unsafe { &*pac::PMISC::PTR };
 
         // Step 1: B0WI=0, permit modification of PFSWE
-        pmisc.pwpr.write(|w| w.b0wi()._0());
+        pmisc.pwpr.write(|w| w.b0wi()._0().pfswe()._0());
 
         // Step 2: PFSWE=1, permit modification of PFS registers
-        pmisc.pwpr.write(|w| w.pfswe()._1());
+        pmisc.pwpr.write(|w| w.b0wi()._0().pfswe()._1());
 
         f();
 
         // Step 3: PFSWE=0, relinquish modification of PFS registers
-        pmisc.pwpr.write(|w| w.pfswe()._0());
+        pmisc.pwpr.write(|w| w.b0wi()._0().pfswe()._0());
 
         // Step 4: B0WI=1, relinquish modification of PWPR
-        pmisc.pwpr.write(|w| w.b0wi()._1());
+        pmisc.pwpr.write(|w| w.b0wi()._1().pfswe()._0());
     })
 }
 
@@ -348,7 +348,7 @@ impl SealedPin for AnyPin {
             /// code for each arm, letting the compiler resolve the type per-arm.
             macro_rules! configure_pfs_input {
                 ($reg:expr) => {
-                    $reg.write(|w| {
+                    $reg.modify(|_, w| {
                         match pull {
                             Pull::None => w.pcr()._0(),
                             Pull::Up => w.pcr()._1(),
@@ -391,7 +391,7 @@ impl SealedPin for AnyPin {
 
             macro_rules! configure_pfs_output {
                 ($reg:expr) => {
-                    $reg.write(|w| w.pmr()._0().dscr().bit(dscr))
+                    $reg.modify(|_, w| w.pmr()._0().dscr().bit(dscr))
                 };
             }
 
@@ -572,8 +572,6 @@ macro_rules! impl_input_only_pin {
 
 macro_rules! impl_pin_inner {
     ($name:ident, $port_periph:ident, $port_num:literal, $pin_num:literal, $pfs_method:ident) => {
-        impl_peripheral!($name);
-
         impl Pin for peripherals::$name {}
 
         impl From<peripherals::$name> for AnyPin {
@@ -715,8 +713,6 @@ macro_rules! impl_pin_inner {
         }
     };
     ($name:ident, $port_periph:ident, $port_num:literal, $pin_num:literal, $pfs_method:ident [ $pfs_idx:literal ]) => {
-        impl_peripheral!($name);
-
         impl Pin for peripherals::$name {}
 
         impl From<peripherals::$name> for AnyPin {
@@ -861,6 +857,7 @@ macro_rules! impl_pin_inner {
 
 impl_pin!(P100, PORT1, 1, 0, p100pfs[0]);
 impl_pin!(P110, PORT1, 1, 11, p110pfs);
+impl_pin!(P111, PORT1, 1, 11, p111pfs);
 
 /// Flex is the foundational wrapper. It holds a type-erased pin and can reconfigure its direction
 /// at any time. Input<> and Output<> are just Flex with a constrained construction path; they hold

@@ -1,5 +1,5 @@
 [workspace]
-members = ["embassy-ra4m1"]
+members = ["embassy-ra4m1", "embassy-ra4m1-examples"]
 
 resolver = "3"
 
