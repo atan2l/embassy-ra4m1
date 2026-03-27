@@ -341,39 +341,7 @@ impl SealedPin for AnyPin {
          * P108/P110 are deliberately excluded until their API is verified.
          */
         with_pfs_unlocked(|| {
-            let pfs = unsafe { &*pac::PFS::PTR };
-
-            /// Helper macro, not a function because we can't abstract over the three (or more, I
-            /// might not have seen them all) SPEC types without a trait. This generates identical
-            /// code for each arm, letting the compiler resolve the type per-arm.
-            macro_rules! configure_pfs_input {
-                ($reg:expr) => {
-                    $reg.modify(|_, w| {
-                        match pull {
-                            Pull::None => w.pcr()._0(),
-                            Pull::Up => w.pcr()._1(),
-                        }
-                        .pmr()
-                        ._0()
-                    })
-                };
-            }
-
-            match (SealedPin::port(self), SealedPin::pin(self)) {
-                (1, 0) => configure_pfs_input!(pfs.p100pfs()[0]),
-                (1, 1) => configure_pfs_input!(pfs.p100pfs()[1]),
-                (1, 2) => configure_pfs_input!(pfs.p100pfs()[2]),
-                (1, 3) => configure_pfs_input!(pfs.p100pfs()[3]),
-                (1, 4) => configure_pfs_input!(pfs.p100pfs()[4]),
-                (1, 5) => configure_pfs_input!(pfs.p100pfs()[5]),
-                (1, 6) => configure_pfs_input!(pfs.p100pfs()[6]),
-                (1, 7) => configure_pfs_input!(pfs.p100pfs()[7]),
-                (1, 8) => configure_pfs_input!(pfs.p108pfs()),
-                (1, 9) => configure_pfs_input!(pfs.p109pfs()),
-                (1, 10) => configure_pfs_input!(pfs.p110pfs()),
-                (1, 11) => configure_pfs_input!(pfs.p111pfs()),
-                _ => unimplemented!("AnyPin PFS not yet implemented for this pin"),
-            }
+            anypin_pfs_configure_input(SealedPin::port(self), pin, matches!(pull, Pull::Up));
         });
     }
 
@@ -386,30 +354,7 @@ impl SealedPin for AnyPin {
         let pin = SealedPin::pin(self);
         // PFS: GPIO mode, drive strength
         with_pfs_unlocked(|| {
-            let pfs = unsafe { &*pac::PFS::PTR };
-            let dscr = drive.dscr_bit();
-
-            macro_rules! configure_pfs_output {
-                ($reg:expr) => {
-                    $reg.modify(|_, w| w.pmr()._0().dscr().bit(dscr))
-                };
-            }
-
-            match (SealedPin::port(self), pin) {
-                (1, 0) => configure_pfs_output!(pfs.p100pfs()[0]),
-                (1, 1) => configure_pfs_output!(pfs.p100pfs()[1]),
-                (1, 2) => configure_pfs_output!(pfs.p100pfs()[2]),
-                (1, 3) => configure_pfs_output!(pfs.p100pfs()[3]),
-                (1, 4) => configure_pfs_output!(pfs.p100pfs()[4]),
-                (1, 5) => configure_pfs_output!(pfs.p100pfs()[5]),
-                (1, 6) => configure_pfs_output!(pfs.p100pfs()[6]),
-                (1, 7) => configure_pfs_output!(pfs.p100pfs()[7]),
-                (1, 8) => configure_pfs_output!(pfs.p108pfs()),
-                (1, 9) => configure_pfs_output!(pfs.p109pfs()),
-                (1, 10) => configure_pfs_output!(pfs.p110pfs()),
-                (1, 11) => configure_pfs_output!(pfs.p111pfs()),
-                _ => unimplemented!("AnyPin PFS not yet implemented for this pin"),
-            }
+            anypin_pfs_configure_output(SealedPin::port(self), pin, drive.dscr_bit());
         });
 
         // PDR=1: pin starts driving now
@@ -493,44 +438,7 @@ impl SealedPin for AnyPin {
         });
 
         with_pfs_unlocked(|| {
-            let pfs = unsafe { &*pac::PFS::PTR };
-
-            macro_rules! reset_pfs {
-                ($reg:expr) => {
-                    $reg.write(|w| {
-                        w.pmr()
-                            ._0()
-                            .pcr()
-                            ._0()
-                            .ncodr()
-                            ._0()
-                            .dscr()
-                            .bit(false)
-                            .isel()
-                            ._0()
-                            .asel()
-                            ._0()
-                            .psel()
-                            .variant(0b00000)
-                    })
-                };
-            }
-
-            match (SealedPin::port(self), pin) {
-                (1, 0) => reset_pfs!(&pfs.p100pfs()[0]),
-                (1, 1) => reset_pfs!(&pfs.p100pfs()[1]),
-                (1, 2) => reset_pfs!(&pfs.p100pfs()[2]),
-                (1, 3) => reset_pfs!(&pfs.p100pfs()[3]),
-                (1, 4) => reset_pfs!(&pfs.p100pfs()[4]),
-                (1, 5) => reset_pfs!(&pfs.p100pfs()[5]),
-                (1, 6) => reset_pfs!(&pfs.p100pfs()[6]),
-                (1, 7) => reset_pfs!(&pfs.p100pfs()[7]),
-                (1, 8) => reset_pfs!(pfs.p108pfs()),
-                (1, 9) => reset_pfs!(pfs.p109pfs()),
-                (1, 10) => reset_pfs!(pfs.p110pfs()),
-                (1, 11) => reset_pfs!(pfs.p111pfs()),
-                _ => unimplemented!("AnyPin PFS not yet implemented for this pin"),
-            }
+            anypin_pfs_reset(SealedPin::port(self), SealedPin::pin(self));
         });
     }
 }
@@ -855,9 +763,8 @@ macro_rules! impl_pin_inner {
     };
 }
 
-impl_pin!(P100, PORT1, 1, 0, p100pfs[0]);
-impl_pin!(P110, PORT1, 1, 10, p110pfs);
-impl_pin!(P111, PORT1, 1, 11, p111pfs);
+include!(concat!(env!("OUT_DIR"), "/gpio_pin_impls.rs"));
+include!(concat!(env!("OUT_DIR"), "/anypin_pfs.rs"));
 
 /// Flex is the foundational wrapper. It holds a type-erased pin and can reconfigure its direction
 /// at any time. Input<> and Output<> are just Flex with a constrained construction path; they hold
