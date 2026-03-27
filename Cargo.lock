@@ -235,6 +235,7 @@ dependencies = [
 name = "embassy-ra4m1"
 version = "0.1.0"
 dependencies = [
+ "cortex-m",
  "critical-section",
  "defmt",
  "embassy-hal-internal",

@@ -856,7 +856,7 @@ macro_rules! impl_pin_inner {
 }
 
 impl_pin!(P100, PORT1, 1, 0, p100pfs[0]);
-impl_pin!(P110, PORT1, 1, 11, p110pfs);
+impl_pin!(P110, PORT1, 1, 10, p110pfs);
 impl_pin!(P111, PORT1, 1, 11, p111pfs);
 
 /// Flex is the foundational wrapper. It holds a type-erased pin and can reconfigure its direction
@@ -878,6 +878,7 @@ impl<'d> Flex<'d> {
     #[inline]
     pub fn set_as_input(&mut self, pull: Pull) {
         self.pin.set_as_input(pull);
+        cortex_m::asm::dsb();
     }
 
     /// Reconfigure as a push-pull output with specified drive strength.
@@ -887,12 +888,15 @@ impl<'d> Flex<'d> {
     #[inline]
     pub fn set_as_output(&mut self, drive: DriveStrength) {
         self.pin.set_as_output(drive, Level::Low);
+        cortex_m::asm::dsb();
     }
 
     /// Read the actual electrical state of the pin (PCNTR2.PIDR)
     #[inline]
     pub fn is_high(&self) -> bool {
-        self.pin.is_input_high()
+        let result = self.pin.is_input_high();
+        cortex_m::asm::dsb();
+        result
     }
 
     /// Read the actual electrical state of the pin (PCNTR2.PIDR)
@@ -910,7 +914,9 @@ impl<'d> Flex<'d> {
     /// Read back the last written output level (PCNTR1.PODR)
     #[inline]
     pub fn is_set_high(&self) -> bool {
-        self.pin.is_output_high()
+        let result = self.pin.is_output_high();
+        cortex_m::asm::dsb();
+        result
     }
 
     /// Read back the last written output level (PCNTR1.PODR)
@@ -929,12 +935,14 @@ impl<'d> Flex<'d> {
     #[inline]
     pub fn set_high(&self) {
         self.pin.set_high();
+        cortex_m::asm::dsb();
     }
 
     /// Drive the pin low via PCNTR3.PORR (atomic, no read-modify-write)
     #[inline]
     pub fn set_low(&self) {
         self.pin.set_low();
+        cortex_m::asm::dsb();
     }
 
     /// Set the output level
@@ -964,6 +972,7 @@ impl<'d> Flex<'d> {
 impl Drop for Flex<'_> {
     fn drop(&mut self) {
         self.pin.set_as_disconnected();
+        cortex_m::asm::dsb();
     }
 }
 
