@@ -73,17 +73,21 @@ fn with_pfs_unlocked(f: impl FnOnce()) {
 
         // Step 1: B0WI=0, permit modification of PFSWE
         pmisc.pwpr.write(|w| w.b0wi()._0().pfswe()._0());
+        cortex_m::asm::dsb();
 
         // Step 2: PFSWE=1, permit modification of PFS registers
         pmisc.pwpr.write(|w| w.b0wi()._0().pfswe()._1());
+        cortex_m::asm::dsb();
 
         f();
 
         // Step 3: PFSWE=0, relinquish modification of PFS registers
         pmisc.pwpr.write(|w| w.b0wi()._0().pfswe()._0());
+        cortex_m::asm::dsb();
 
         // Step 4: B0WI=1, relinquish modification of PWPR
         pmisc.pwpr.write(|w| w.b0wi()._1().pfswe()._0());
+        cortex_m::asm::dsb();
     })
 }
 
@@ -117,6 +121,13 @@ pub(crate) trait SealedPin {
 
     fn set_as_input(&self, pull: Pull);
     fn set_as_output(&self, drive_strength: DriveStrength, initial_level: Level);
+
+    fn set_as_output_open_drain(
+        &self,
+        initial_level: Level,
+        drive_strength: DriveStrength,
+        pull: Pull,
+    );
 
     /// Return the pin to its reset state: floating input, GPIO mode, no pull.
     fn set_as_disconnected(&self);
@@ -296,49 +307,9 @@ impl SealedPin for AnyPin {
     fn set_as_input(&self, pull: Pull) {
         let pin = SealedPin::pin(self);
 
-        // Step 1: PDR=0 for this pin. Modify to preserve other pins.
-        critical_section::with(|_| {
-            let mask = !(1 << pin);
-            match SealedPin::port(self) {
-                0 => unsafe { &*pac::PORT0::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                1 => unsafe { &*pac::PORT1::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                2 => unsafe { &*pac::PORT2::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                3 => unsafe { &*pac::PORT3::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                4 => unsafe { &*pac::PORT4::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                5 => unsafe { &*pac::PORT5::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                6 => unsafe { &*pac::PORT6::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                7 => unsafe { &*pac::PORT7::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                8 => unsafe { &*pac::PORT8::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                9 => unsafe { &*pac::PORT9::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                _ => unreachable!(),
-            }
-        });
-
         /*
-         * Step 2: PFS, set PMR=0 (GPIO), PCR per pull argument. This requires the PWPR unlock
-         * sequence. AnyPin uses a match to reach the right PFS register. Note: this only covers
-         * pins that use P000PFS_SPEC.
-         * P108/P110 are deliberately excluded until their API is verified.
+         * Set PDR=0, PFS, set PMR=0 (GPIO), PCR per pull argument. This requires the PWPR unlock
+         * sequence. AnyPin uses a match to reach the right PFS register.
          */
         with_pfs_unlocked(|| {
             anypin_pfs_configure_input(SealedPin::port(self), pin, matches!(pull, Pull::Up));
@@ -352,91 +323,35 @@ impl SealedPin for AnyPin {
         }
 
         let pin = SealedPin::pin(self);
-        // PFS: GPIO mode, drive strength
-        with_pfs_unlocked(|| {
-            anypin_pfs_configure_output(SealedPin::port(self), pin, drive.dscr_bit());
-        });
+        let podr_bit = self.is_output_high();
 
-        // PDR=1: pin starts driving now
-        critical_section::with(|_| {
-            let mask = 1 << pin;
-            match SealedPin::port(self) {
-                0 => unsafe { &*pac::PORT0::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                1 => unsafe { &*pac::PORT1::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                2 => unsafe { &*pac::PORT2::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                3 => unsafe { &*pac::PORT3::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                4 => unsafe { &*pac::PORT4::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                5 => unsafe { &*pac::PORT5::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                6 => unsafe { &*pac::PORT6::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                7 => unsafe { &*pac::PORT7::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                8 => unsafe { &*pac::PORT8::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                9 => unsafe { &*pac::PORT9::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | mask) }),
-                _ => unreachable!(),
-            }
+        // PFS: GPIO mode, drive strength, output mode
+        with_pfs_unlocked(|| {
+            anypin_pfs_configure_output(SealedPin::port(self), pin, podr_bit, drive.dscr_bit());
+        });
+    }
+
+    fn set_as_output_open_drain(&self, initial_level: Level, drive: DriveStrength, pull: Pull) {
+        match initial_level {
+            Level::Low => self.set_low(),
+            Level::High => self.set_high(),
+        }
+
+        let pin = SealedPin::pin(self);
+        let podr_bit = self.is_output_high();
+
+        with_pfs_unlocked(|| {
+            anypin_pfs_configure_open_drain(
+                SealedPin::port(self),
+                pin,
+                matches!(pull, Pull::Up),
+                podr_bit,
+                drive.dscr_bit(),
+            );
         });
     }
 
     fn set_as_disconnected(&self) {
-        let pin = SealedPin::pin(self);
-
-        // PDR=0 first
-        critical_section::with(|_| {
-            let mask = !(1 << pin);
-            match SealedPin::port(self) {
-                0 => unsafe { &*pac::PORT0::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                1 => unsafe { &*pac::PORT1::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                2 => unsafe { &*pac::PORT2::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                3 => unsafe { &*pac::PORT3::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                4 => unsafe { &*pac::PORT4::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                5 => unsafe { &*pac::PORT5::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                6 => unsafe { &*pac::PORT6::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                7 => unsafe { &*pac::PORT7::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                8 => unsafe { &*pac::PORT8::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                9 => unsafe { &*pac::PORT9::PTR }
-                    .pcntr1()
-                    .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & mask) }),
-                _ => unreachable!(),
-            }
-        });
-
         with_pfs_unlocked(|| {
             anypin_pfs_reset(SealedPin::port(self), SealedPin::pin(self));
         });
@@ -534,27 +449,19 @@ macro_rules! impl_pin_inner {
 
             fn set_as_input(&self, pull: Pull) {
                 /*
-                 * Step 1: PDR=0 for this pin, preserve all other PDR bits. This is read-modify-write
-                 * on a shared 16-bit register, so it needs a critical section.
-                 */
-                critical_section::with(|_| {
-                    unsafe { &*pac::$port_periph::PTR }
-                        .pcntr1()
-                        .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & !(1 << $pin_num)) });
-                });
-
-                /*
-                 * Step 2: PFS configuration, GPIO mode, pull-up setting. PMR=0 is technically the
+                 * PDR, PFS configuration, GPIO mode, pull-up setting. PMR=0 is technically the
                  * reset default, but we set it explicitly to be safe against prior peripheral usage.
                  */
                 with_pfs_unlocked(|| {
                     let pfs = unsafe { &*pac::PFS::PTR };
-                    pfs.$pfs_method().modify(|_, w| {
+                    pfs.$pfs_method().write(|w| {
                         match pull {
                             Pull::None => w.pcr()._0(),
                             Pull::Up => w.pcr()._1(),
                         }
                         .pmr()
+                        ._0()
+                        .pdr()
                         ._0()
                     });
                 });
@@ -573,49 +480,53 @@ macro_rules! impl_pin_inner {
                     Level::High => self.set_high(),
                 }
 
-                // PFS: GPIO Mode, drive strength
+                // PFS: PDR, GPIO Mode, drive strength
                 with_pfs_unlocked(|| {
                     let pfs = unsafe { &*pac::PFS::PTR };
                     pfs.$pfs_method()
-                        .modify(|_, w| w.pmr()._0().dscr().bit(drive.dscr_bit()));
+                        .write(|w| w.pmr()._0().dscr().bit(drive.dscr_bit()).pdr()._1());
                 });
+            }
 
-                // PDR=1
-                critical_section::with(|_| {
-                    unsafe { &*pac::$port_periph::PTR }
-                        .pcntr1()
-                        .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | (1 << $pin_num)) });
+            fn set_as_output_open_drain(
+                &self,
+                initial_level: Level,
+                drive: DriveStrength,
+                pull: Pull,
+            ) {
+                match initial_level {
+                    Level::Low => self.set_low(),
+                    Level::High => self.set_high(),
+                }
+
+                let podr_bit = self.is_output_high();
+                with_pfs_unlocked(|| {
+                    let pfs = unsafe { &*pac::PFS::PTR };
+                    pfs.$pfs_method().write(|w| {
+                        if pull == Pull::Up {
+                            w.pcr()._1()
+                        } else {
+                            w.pcr()._0()
+                        }
+                        .pdr()
+                        ._1()
+                        .dscr()
+                        .bit(drive.dscr_bit())
+                        .podr()
+                        .bit(podr_bit)
+                        .pmr()
+                        ._0()
+                        .ncodr()
+                        ._1()
+                    });
                 });
             }
 
             fn set_as_disconnected(&self) {
-                // PDR=0 first: stop driving before reconfiguring PFS
-                critical_section::with(|_| {
-                    unsafe { &*pac::$port_periph::PTR }
-                        .pcntr1()
-                        .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & !(1 << $pin_num)) });
-                });
-
                 // PFS: reset all fields to power-on defaults
                 with_pfs_unlocked(|| {
                     let pfs = unsafe { &*pac::PFS::PTR };
-
-                    pfs.$pfs_method().write(|w| {
-                        w.pmr()
-                            ._0()
-                            .pcr()
-                            ._0()
-                            .ncodr()
-                            ._0()
-                            .dscr()
-                            .bit(false)
-                            .isel()
-                            ._0()
-                            .asel()
-                            ._0()
-                            .psel()
-                            .variant(0b00000)
-                    });
+                    pfs.$pfs_method().reset();
                 });
             }
         }
@@ -675,27 +586,19 @@ macro_rules! impl_pin_inner {
 
             fn set_as_input(&self, pull: Pull) {
                 /*
-                 * Step 1: PDR=0 for this pin, preserve all other PDR bits. This is read-modify-write
-                 * on a shared 16-bit register, so it needs a critical section.
-                 */
-                critical_section::with(|_| {
-                    unsafe { &*pac::$port_periph::PTR }
-                        .pcntr1()
-                        .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & !(1 << $pin_num)) });
-                });
-
-                /*
-                 * Step 2: PFS configuration, GPIO mode, pull-up setting. PMR=0 is technically the
+                 * PDR, PFS configuration, GPIO mode, pull-up setting. PMR=0 is technically the
                  * reset default, but we set it explicitly to be safe against prior peripheral usage.
                  */
                 with_pfs_unlocked(|| {
                     let pfs = unsafe { &*pac::PFS::PTR };
-                    pfs.$pfs_method()[$pfs_idx].modify(|_, w| {
+                    pfs.$pfs_method()[$pfs_idx].write(|w| {
                         match pull {
                             Pull::None => w.pcr()._0(),
                             Pull::Up => w.pcr()._1(),
                         }
                         .pmr()
+                        ._0()
+                        .pdr()
                         ._0()
                     });
                 });
@@ -714,49 +617,54 @@ macro_rules! impl_pin_inner {
                     Level::High => self.set_high(),
                 }
 
-                // PFS: GPIO Mode, drive strength
+                // PFS: PDR, GPIO Mode, drive strength
                 with_pfs_unlocked(|| {
                     let pfs = unsafe { &*pac::PFS::PTR };
                     pfs.$pfs_method()[$pfs_idx]
-                        .modify(|_, w| w.pmr()._0().dscr().bit(drive.dscr_bit()));
+                        .write(|w| w.pmr()._0().dscr().bit(drive.dscr_bit()).pdr()._1());
                 });
+            }
 
-                // PDR=1
-                critical_section::with(|_| {
-                    unsafe { &*pac::$port_periph::PTR }
-                        .pcntr1()
-                        .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() | (1 << $pin_num)) });
+            fn set_as_output_open_drain(
+                &self,
+                initial_level: Level,
+                drive: DriveStrength,
+                pull: Pull,
+            ) {
+                match initial_level {
+                    Level::Low => self.set_low(),
+                    Level::High => self.set_high(),
+                }
+
+                let podr_bit = self.is_output_high();
+
+                with_pfs_unlocked(|| {
+                    let pfs = unsafe { &*pac::PFS::PTR };
+                    pfs.$pfs_method()[$pfs_idx].write(|w| {
+                        if pull == Pull::Up {
+                            w.pcr()._1()
+                        } else {
+                            w.pcr()._0()
+                        }
+                        .pdr()
+                        ._1()
+                        .dscr()
+                        .bit(drive.dscr_bit())
+                        .podr()
+                        .bit(podr_bit)
+                        .pmr()
+                        ._0()
+                        .ncodr()
+                        ._1()
+                    });
                 });
             }
 
             fn set_as_disconnected(&self) {
-                // PDR=0 first: stop driving before reconfiguring PFS
-                critical_section::with(|_| {
-                    unsafe { &*pac::$port_periph::PTR }
-                        .pcntr1()
-                        .modify(|r, w| unsafe { w.pdr().bits(r.pdr().bits() & !(1 << $pin_num)) });
-                });
-
                 // PFS: reset all fields to power-on defaults
                 with_pfs_unlocked(|| {
                     let pfs = unsafe { &*pac::PFS::PTR };
-
-                    pfs.$pfs_method()[$pfs_idx].write(|w| {
-                        w.pmr()
-                            ._0()
-                            .pcr()
-                            ._0()
-                            .ncodr()
-                            ._0()
-                            .dscr()
-                            .bit(false)
-                            .isel()
-                            ._0()
-                            .asel()
-                            ._0()
-                            .psel()
-                            .variant(0b00000)
-                    });
+                    pfs.$pfs_method()[$pfs_idx].reset();
                 });
             }
         }
@@ -798,12 +706,18 @@ impl<'d> Flex<'d> {
         cortex_m::asm::dsb();
     }
 
+    /// Reconfigure as an open drain output.
+    ///
+    /// The initial output level is set to high, i.e. hi-z
+    pub fn set_as_output_open_drain(&mut self, drive: DriveStrength, pull: Pull) {
+        self.pin.set_as_output_open_drain(Level::High, drive, pull);
+        cortex_m::asm::dsb();
+    }
+
     /// Read the actual electrical state of the pin (PCNTR2.PIDR)
     #[inline]
     pub fn is_high(&self) -> bool {
-        let result = self.pin.is_input_high();
-        cortex_m::asm::dsb();
-        result
+        self.pin.is_input_high()
     }
 
     /// Read the actual electrical state of the pin (PCNTR2.PIDR)
@@ -821,9 +735,7 @@ impl<'d> Flex<'d> {
     /// Read back the last written output level (PCNTR1.PODR)
     #[inline]
     pub fn is_set_high(&self) -> bool {
-        let result = self.pin.is_output_high();
-        cortex_m::asm::dsb();
-        result
+        self.pin.is_output_high()
     }
 
     /// Read back the last written output level (PCNTR1.PODR)
@@ -932,6 +844,75 @@ impl<'d> Output<'d> {
         let flex = Flex::new(pin);
         // set_as_output stages the level before enabling the output driver.
         flex.pin.set_as_output(drive, initial_level);
+        Self { pin: flex }
+    }
+
+    #[inline]
+    pub fn set_high(&mut self) {
+        self.pin.set_high();
+    }
+    #[inline]
+    pub fn set_low(&mut self) {
+        self.pin.set_low();
+    }
+    #[inline]
+    pub fn set_level(&mut self, level: Level) {
+        self.pin.set_level(level);
+    }
+    #[inline]
+    pub fn is_high(&self) -> bool {
+        self.pin.is_high()
+    }
+    #[inline]
+    pub fn is_low(&self) -> bool {
+        self.pin.is_low()
+    }
+    #[inline]
+    pub fn is_set_high(&self) -> bool {
+        self.pin.is_set_high()
+    }
+    #[inline]
+    pub fn is_set_low(&self) -> bool {
+        self.pin.is_set_low()
+    }
+    #[inline]
+    pub fn get_output_level(&self) -> Level {
+        self.pin.get_output_level()
+    }
+    #[inline]
+    pub fn toggle(&mut self) {
+        self.pin.toggle();
+    }
+}
+
+/// A GPIO pin configured as an open drain output.
+///
+/// When dropped, the pin is returned to its reset state (floating input).
+pub struct OutputOpenDrain<'d> {
+    pub(crate) pin: Flex<'d>,
+}
+
+impl<'d> OutputOpenDrain<'d> {
+    /// Configure a pin as an open drain output without pull-up or pull-down.
+    #[inline]
+    pub fn new(pin: Peri<'d, impl Pin>, initial_level: Level, drive: DriveStrength) -> Self {
+        let flex = Flex::new(pin);
+        flex.pin
+            .set_as_output_open_drain(initial_level, drive, Pull::None);
+        Self { pin: flex }
+    }
+
+    /// Configure a pin as an open drain output with the specified pull.
+    #[inline]
+    pub fn new_with_pull(
+        pin: Peri<'d, impl Pin>,
+        initial_level: Level,
+        drive: DriveStrength,
+        pull: Pull,
+    ) -> Self {
+        let flex = Flex::new(pin);
+        flex.pin
+            .set_as_output_open_drain(initial_level, drive, pull);
         Self { pin: flex }
     }
 

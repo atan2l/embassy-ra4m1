@@ -1,6 +1,5 @@
 # Pin definitions for RA4M1
 # pfs_type: "array" = pmxypfs()[idx], "single" = pmxypfs()
-# pfs_spec: "p000" = P000PFS_SPEC, "p108" = P108PFS_SPEC, "p109" = P109_SPEC
 # input_only: true for pins that cannot be outputs (P200, P214, P215)
 # packages: which physical packages include this pin
 
@@ -13,7 +12,6 @@ port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
 pfs_index = 0
-pfs_spec = "p000"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -23,8 +21,7 @@ pin = 1
 port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
-pfx_index = 1
-pfs_spec = "p000"
+pfs_index = 1
 packages = ["lqfp64"]
 
 [[pins]]
@@ -35,7 +32,6 @@ port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
 pfs_index = 2
-pfs_spec = "p000"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -45,8 +41,7 @@ pin = 3
 port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
-pfx_index = 3
-pfs_spec = "p000"
+pfs_index = 3
 packages = ["lqfp64"]
 
 [[pins]]
@@ -57,7 +52,6 @@ port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
 pfs_index = 4
-pfs_spec = "p000"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -67,8 +61,7 @@ pin = 5
 port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
-pfx_index = 5
-pfs_spec = "p000"
+pfs_index = 5
 packages = ["lqfp64"]
 
 [[pins]]
@@ -79,7 +72,6 @@ port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
 pfs_index = 6
-pfs_spec = "p000"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -89,8 +81,7 @@ pin = 7
 port_periph = "PORT1"
 pfs_method = "p100pfs"
 pfs_type = "array"
-pfx_index = 7
-pfs_spec = "p000"
+pfs_index = 7
 packages = ["lqfp64"]
 
 [[pins]]
@@ -100,7 +91,6 @@ pin = 8
 port_periph = "PORT1"
 pfs_method = "p108pfs"
 pfs_type = "single"
-pfs_spec = "p108"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -110,7 +100,6 @@ pin = 9
 port_periph = "PORT1"
 pfs_method = "p109pfs"
 pfs_type = "single"
-pfs_spec = "p109"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -120,7 +109,6 @@ pin = 10
 port_periph = "PORT1"
 pfs_method = "p110pfs"
 pfs_type = "single"
-pfs_spec = "p108"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -130,7 +118,6 @@ pin = 11
 port_periph = "PORT1"
 pfs_method = "p111pfs"
 pfs_type = "single"
-pfs_spec = "p000"
 packages = ["lqfp64"]
 
 [[pins]]
@@ -140,7 +127,6 @@ pin = 12
 port_periph = "PORT1"
 pfs_method = "p112pfs"
 pfs_type = "single"
-pfs_spec = "p000"
 packages = ["lqfp100"]
 
 [[pins]]
@@ -150,7 +136,6 @@ pin = 13
 port_periph = "PORT1"
 pfs_method = "p113pfs"
 pfs_type = "single"
-pfs_spec = "p000"
 packages = ["lqfp100"]
 
 [[pins]]
@@ -160,7 +145,6 @@ pin = 14
 port_periph = "PORT1"
 pfs_method = "p114pfs"
 pfs_type = "single"
-pfs_spec = "p000"
 packages = ["lqfp100"]
 
 [[pins]]
@@ -170,5 +154,4 @@ pin = 15
 port_periph = "PORT1"
 pfs_method = "p115pfs"
 pfs_type = "single"
-pfs_spec = "p000"
 packages = ["lqfp100"]

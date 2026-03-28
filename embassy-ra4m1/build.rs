@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use std::fmt::Write;
 use std::path::PathBuf;
-use std::pin::pin;
 
 #[derive(Deserialize)]
 struct PinFile {
@@ -18,7 +17,6 @@ struct Pin {
     pfs_type: String,
     #[serde(default)]
     pfs_index: usize,
-    pfs_spec: String,
     #[serde(default)]
     input_only: bool,
     packages: Vec<String>,
@@ -121,7 +119,7 @@ fn generate_anypin_pfs(pins: &[&Pin], out_dir: &PathBuf) {
 
     for pin in pins {
         let reg = pfs_register_expr(pin);
-        writeln!(out, "        ({}, {}) => {}.modify(|_, w| {{ if pcr {{ w.pcr()._1() }} else {{ w.pcr()._0() }}.pmr()._0() }}),", pin.port, pin.pin, reg).unwrap();
+        writeln!(out, "        ({}, {}) => {}.write(|w| {{ if pcr {{ w.pcr()._1() }} else {{ w.pcr()._0() }}.pmr()._0() }}),", pin.port, pin.pin, reg).unwrap();
     }
 
     writeln!(out, "        _ => {{}}").unwrap();
@@ -133,7 +131,7 @@ fn generate_anypin_pfs(pins: &[&Pin], out_dir: &PathBuf) {
     writeln!(out, "#[inline]").unwrap();
     writeln!(
         out,
-        "fn anypin_pfs_configure_output(port: u8, pin_num: u8, dscr: bool) {{"
+        "fn anypin_pfs_configure_output(port: u8, pin_num: u8, podr:bool, dscr: bool) {{"
     )
     .unwrap();
     writeln!(out, "    let pfs = unsafe {{ &*crate::pac::PFS::PTR }};").unwrap();
@@ -143,7 +141,28 @@ fn generate_anypin_pfs(pins: &[&Pin], out_dir: &PathBuf) {
         let reg = pfs_register_expr(pin);
         writeln!(
             out,
-            "        ({}, {}) => {}.modify(|_, w| w.pmr()._0().dscr().bit(dscr)),",
+            "        ({}, {}) => {}.write(|w| w.pmr()._0().dscr().bit(dscr).podr().bit(podr).pdr()._1()),",
+            pin.port, pin.pin, reg
+        )
+        .unwrap();
+    }
+
+    writeln!(out, "        _ => {{}}").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out).unwrap();
+
+    // configure open drain
+    writeln!(out, "#[inline]").unwrap();
+    writeln!(out, "fn anypin_pfs_configure_open_drain(port: u8, pin_num: u8, pcr: bool,  podr: bool, dscr: bool) {{").unwrap();
+    writeln!(out, "    let pfs = unsafe {{ &*crate::pac::PFS::PTR }};").unwrap();
+    writeln!(out, "    match (port, pin_num) {{").unwrap();
+
+    for pin in pins {
+        let reg = pfs_register_expr(pin);
+        writeln!(
+            out,
+            "        ({}, {}) => {}.write(|w| {{ if pcr {{ w.pcr()._1() }} else {{ w.pcr()._0() }} }}.pdr()._1().dscr().bit(dscr).podr().bit(podr).pmr()._0().ncodr()._1()),",
             pin.port, pin.pin, reg
         )
         .unwrap();
@@ -162,7 +181,12 @@ fn generate_anypin_pfs(pins: &[&Pin], out_dir: &PathBuf) {
 
     for pin in pins {
         let reg = pfs_register_expr(pin);
-        writeln!(out, "        ({}, {}) => {}.write(|w| unsafe {{ w.pmr()._0().pcr()._0().ncodr()._0().dscr().bit(false).isel()._0().asel()._0().psel().variant(0) }}),", pin.port, pin.pin, reg).unwrap();
+        writeln!(
+            out,
+            "        ({}, {}) => {}.reset(),",
+            pin.port, pin.pin, reg
+        )
+        .unwrap();
     }
 
     writeln!(out, "        _ => {{}}").unwrap();
